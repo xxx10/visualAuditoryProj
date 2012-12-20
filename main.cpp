@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include <math.h>
+#include <cmath>
 #include <float.h>
 #include <limits.h>
 #include <time.h>
@@ -24,22 +24,26 @@ typedef struct __faceinfo {
 }FaceInfo;
 static FaceInfo result[50000][10];
 static int frameNum = 0;
+static FaceInfo refer[5];
+static int people = 2;
 
 int is_speaking(int people ,FaceInfo *face); 
 void detect_and_draw( IplImage* image ); 
 void beautify_result(FaceInfo result[50000][10]);
-void sort_horizontally(FaceInfo face[][10]);
+void sort_horizontally(FaceInfo face[50000][10]);
 void swap_faceinfo(FaceInfo face1, FaceInfo face2);
+void init_params();
+bool considerable(FaceInfo face);
 const char* cascade_name = "haarcascade_frontalface_alt.xml";		//分类器路径
 /*    "haarcascade_profileface.xml";*/
  
 int main( int argc, char** argv )
 {
+  init_params();
   CvCapture* capture = 0;
   IplImage *frame, *frame_copy = 0;
   int optlen = strlen("--cascade="); //?  --cascade=为分类器选项指示符号 ?
   const char* input_name;
-  int people = 2;
     
   cascade_name = "haarcascade_frontalface_alt2.xml";   //load classifierCascade
   input_name = argc > 1 ? argv[1] : 0;
@@ -131,10 +135,19 @@ void detect_and_draw( IplImage* img )
 	  radius = cvRound((r->width + r->height)*0.25);
 	  cvCircle( img, center, radius, colors[i%8], 3, 8, 0 );
 	  
+	  FaceInfo tmp;
+	  tmp.x = r->x;
+	  tmp.y = r->y;
+	  tmp.width = r->width;
+	  tmp.height = r->height;
+	  if(considerable(tmp))
+	    cout<<"considerable"<<endl;
+	  else break;
 	  result[frameNum][i].x = r->x;
 	  result[frameNum][i].y = r->y;
 	  result[frameNum][i].width = r->width;
 	  result[frameNum][i].height = r->height;
+
 	  printf("%f, %f, %f, %f\t", result[frameNum][i].x, result[frameNum][i].y, result[frameNum][i].width, result[frameNum][i].height);
         }
       //t = (double)cvGetTickCount() - t;		//统计监测及绘制时间
@@ -156,15 +169,15 @@ int is_speaking(int people ,FaceInfo *face)
 
 void beautify_result(FaceInfo result[50000][10])
 {
-  
+  sort_horizontally(result);
 }
 
 void sort_horizontally(FaceInfo result[50000][10])
 {
-  for(int j = 0; j++ ; j < frameNum)
-    for(int i = 0; i++ ; i < 10)
+  for(int j = 0; j < frameNum; j++)
+    for(int i = 0;i < 10; i++)
       {
-	if(result[j][i] < result[j][i+1])
+	if(result[j][i].x < result[j][i+1].x)
 	  {
 	    swap_faceinfo(result[j][i], result[j][i+1]);
 	  }
@@ -189,4 +202,28 @@ void swap_faceinfo(FaceInfo face1, FaceInfo face2)
       face2.width = tmp.width;
       face2.height = tmp.height;
     }
+}
+
+void init_params()
+{
+  refer[0].x = 197.0;
+  refer[0].y = 173.0;
+  refer[1].x = 982.0;
+  refer[1].y = 242.0;
+}
+
+bool considerable(FaceInfo face)
+{
+  double distance(FaceInfo face1, FaceInfo face2);
+  for(int i = 0; i<people; i++)
+    {
+      if(distance(refer[i], face) < 200)
+	return true;
+    }
+  return false;
+}
+
+double distance(FaceInfo face1, FaceInfo face2)
+{
+  return sqrt((face1.x - face2.x)*(face1.x - face2.x)+(face1.y - face2.y)*(face1.y - face2.y));
 }
