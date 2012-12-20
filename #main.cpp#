@@ -14,7 +14,7 @@
 #endif
 using namespace std;
 static CvMemStorage* storage = 0;		
-static CvHaarClassifierCascade* cascade = 0;		//·ÖÀàÆ÷
+static CvHaarClassifierCascade* cascade = 0;		//åˆ†ç±»å™¨
 typedef struct __faceinfo {
   double x;
   double y;
@@ -30,58 +30,58 @@ void detect_and_draw( IplImage* image );
 void beautify_result(FaceInfo result[50000][10]);
 void sort_horizontally(FaceInfo face[][10]);
 void swap_faceinfo(FaceInfo face1, FaceInfo face2);
-const char* cascade_name = "haarcascade_frontalface_alt.xml";		//·ÖÀàÆ÷Â·¾¶
+const char* cascade_name = "haarcascade_frontalface_alt.xml";		//åˆ†ç±»å™¨è·¯å¾„
 /*    "haarcascade_profileface.xml";*/
  
 int main( int argc, char** argv )
 {
   CvCapture* capture = 0;
   IplImage *frame, *frame_copy = 0;
-  int optlen = strlen("--cascade="); //?  --cascade=Îª·ÖÀàÆ÷Ñ¡ÏîÖ¸Ê¾·ûºÅ ?
+  int optlen = strlen("--cascade="); //?  --cascade=ä¸ºåˆ†ç±»å™¨é€‰é¡¹æŒ‡ç¤ºç¬¦å· ?
   const char* input_name;
   int people = 2;
     
   cascade_name = "haarcascade_frontalface_alt2.xml";   //load classifierCascade
   input_name = argc > 1 ? argv[1] : 0;
   cascade = (CvHaarClassifierCascade*)cvLoad( cascade_name, 0, 0, 0 );
-  if( !cascade )		//¼ÓÔØ·ÖÀàÆ÷³ö´í
+  if( !cascade )		//åŠ è½½åˆ†ç±»å™¨å‡ºé”™
     {
       fprintf( stderr, "ERROR: Could not load classifier cascade\n" );
       return -1;
     }
-  storage = cvCreateMemStorage(0);		// ´´½¨ÄÚ´æ´æ´¢Æ÷£¬ÄÚ´æ¿é
+  storage = cvCreateMemStorage(0);		// åˆ›å»ºå†…å­˜å­˜å‚¨å™¨ï¼Œå†…å­˜å—
  
-  if( !input_name || (isdigit(input_name[0]) && input_name[1] == '\0') )		//´ÓÉãÏñÍ·¶ÁÈ¡
-    //      capture = cvCaptureFromCAM( !input_name ? 0 : input_name[0] - '0' );	//³õÊ¼»¯ÉãÏñÍ·²¶×½Æ÷
+  if( !input_name || (isdigit(input_name[0]) && input_name[1] == '\0') )		//ä»æ‘„åƒå¤´è¯»å–
+    //      capture = cvCaptureFromCAM( !input_name ? 0 : input_name[0] - '0' );	//åˆå§‹åŒ–æ‘„åƒå¤´æ•æ‰å™¨
     capture = cvCaptureFromAVI("Vid1.avi");
 
-  cvNamedWindow( "result", 1 );  //´´½¨´°¿Ú
+  cvNamedWindow( "result", 1 );  //åˆ›å»ºçª—å£
  
-  if( capture )    //¶ÔÊÓÆµÎÄ¼ş(ÉãÏñÍ·)ÖğÖ¡´¦Àí
+  if( capture )    //å¯¹è§†é¢‘æ–‡ä»¶(æ‘„åƒå¤´)é€å¸§å¤„ç†
     {
       for(frameNum = 0;++frameNum;)
         {
 	  if( !cvQueryFrame( capture ))		
 	    break;
 	  frame = cvRetrieveFrame( capture ); 
-	  if( !frame )		                //×¥Ö¡Ê§°Ü
+	  if( !frame )		                //æŠ“å¸§å¤±è´¥
 	    break;
-	  if( !frame_copy )		//frame_copyÎª0£¬Ôò³õÊ¼»¯´ËÖ¡(Image)µÄ¸±±¾
+	  if( !frame_copy )		//frame_copyä¸º0ï¼Œåˆ™åˆå§‹åŒ–æ­¤å¸§(Image)çš„å‰¯æœ¬
 	    frame_copy = cvCreateImage( cvSize(frame->width,frame->height),
 					IPL_DEPTH_8U, frame->nChannels );
-	  if( frame->origin == IPL_ORIGIN_TL )//ÏñËØÔ­µãÎª×óÉÏ½Ç
+	  if( frame->origin == IPL_ORIGIN_TL )//åƒç´ åŸç‚¹ä¸ºå·¦ä¸Šè§’
 	    cvCopy( frame, frame_copy, 0 );
-	  else								//ÓÒÉÏÔò·´×ª¿½±´
+	  else								//å³ä¸Šåˆ™åè½¬æ‹·è´
 	    cvFlip( frame, frame_copy, 0 );
-	  detect_and_draw( frame_copy );		// µ÷ÓÃ¼ì²âºÍ»æÖÆº¯Êı
+	  detect_and_draw( frame_copy );		// è°ƒç”¨æ£€æµ‹å’Œç»˜åˆ¶å‡½æ•°
 	  is_speaking( people, result[frameNum] );
-	  if( cvWaitKey( 10 ) >= 0 )          //µÈ´ı¼üÅÌ10ms
+	  if( cvWaitKey( 10 ) >= 0 )          //ç­‰å¾…é”®ç›˜10ms
 	    break;
         }
-      cvReleaseImage( &frame_copy );			//ÊÍ·ÅÖ¡¸±±¾ÄÚ´æ¿Õ¼ä
-      cvReleaseCapture( &capture );			//ÊÍ·Å²¶×½Æ÷£¬Í¬Ê±ÊÍ·Åframe
+      cvReleaseImage( &frame_copy );			//é‡Šæ”¾å¸§å‰¯æœ¬å†…å­˜ç©ºé—´
+      cvReleaseCapture( &capture );			//é‡Šæ”¾æ•æ‰å™¨ï¼ŒåŒæ—¶é‡Šæ”¾frame
     }
-  cvDestroyWindow("result");		//Ïú»Ù´°¿Ú
+  cvDestroyWindow("result");		//é”€æ¯çª—å£
   return 0;
 }
 
@@ -102,27 +102,27 @@ void detect_and_draw( IplImage* img )
   IplImage* gray = cvCreateImage( cvSize(img->width,img->height), 8, 1 );
   IplImage* small_img = cvCreateImage( cvSize( cvRound (img->width),
 					       cvRound (img->height)),
-				       8, 1 );		//cvRound(double i); ¶ÔdoubleĞÍÊı¾İËÄÉáÎåÈë£¬·µ»ØÕûĞÎ
+				       8, 1 );		//cvRound(double i); å¯¹doubleå‹æ•°æ®å››èˆäº”å…¥ï¼Œè¿”å›æ•´å½¢
   int i;
  
-  cvCvtColor( img, gray, CV_BGR2GRAY );		//½«rgbÍ¼Ïñ×ª»¯Îª»Ò¶ÈÍ¼Ïñ img-->gray
-  cvResize( gray, small_img, CV_INTER_LINEAR );		//ÎªÁËÈÃËùÓĞÊäÈëÍ¼ÏñÍ¬Ñù´óĞ¡£¬ĞèÒª¶ÔÍ¼Ïñ½øĞĞËõ·Å gray-->small_img
-  cvEqualizeHist( small_img, small_img );		//Ö±·½Í¼¾ùºâ»¯
-  cvClearMemStorage( storage );		//Çå¿ÕÄÚ´æ¿é
+  cvCvtColor( img, gray, CV_BGR2GRAY );		//å°†rgbå›¾åƒè½¬åŒ–ä¸ºç°åº¦å›¾åƒ img-->gray
+  cvResize( gray, small_img, CV_INTER_LINEAR );		//ä¸ºäº†è®©æ‰€æœ‰è¾“å…¥å›¾åƒåŒæ ·å¤§å°ï¼Œéœ€è¦å¯¹å›¾åƒè¿›è¡Œç¼©æ”¾ gray-->small_img
+  cvEqualizeHist( small_img, small_img );		//ç›´æ–¹å›¾å‡è¡¡åŒ–
+  cvClearMemStorage( storage );		//æ¸…ç©ºå†…å­˜å—
  
   if( cascade )
     {
-      double t = (double)cvGetTickCount();		//·µ»Øtics¸öÊı
-      CvSeq* faces = cvHaarDetectObjects( small_img, cascade, storage,				//!¼ì²âÍ¼ÏñÖĞµÄÄ¿±ê!
+      double t = (double)cvGetTickCount();		//è¿”å›ticsä¸ªæ•°
+      CvSeq* faces = cvHaarDetectObjects( small_img, cascade, storage,				//!æ£€æµ‹å›¾åƒä¸­çš„ç›®æ ‡!
 					  1.1, 2, //0,
 					  CV_HAAR_DO_CANNY_PRUNING,   
-					  //(Ò²¿ÉÉèÎªãĞÖµ0)²Ù×÷·½Ê½£¬º¯ÊıÀûÓÃCanny±ßÔµ¼ì²âÆ÷À´ÅÅ³ıÒ»Ğ©±ßÔµºÜÉÙ»òÕßºÜ¶àµÄÍ¼ÏñÇøÓò£¬ÒòÎªÕâÑùµÄÇøÓòÒ»°ã²»º¬±»¼ìÄ¿±ê
+					  //(ä¹Ÿå¯è®¾ä¸ºé˜ˆå€¼0)æ“ä½œæ–¹å¼ï¼Œå‡½æ•°åˆ©ç”¨Cannyè¾¹ç¼˜æ£€æµ‹å™¨æ¥æ’é™¤ä¸€äº›è¾¹ç¼˜å¾ˆå°‘æˆ–è€…å¾ˆå¤šçš„å›¾åƒåŒºåŸŸï¼Œå› ä¸ºè¿™æ ·çš„åŒºåŸŸä¸€èˆ¬ä¸å«è¢«æ£€ç›®æ ‡
 					  cvSize(80, 80) );
-      // t = (double)cvGetTickCount() - t;		//Í³¼Æ¼à²âÊ±¼ä
+      // t = (double)cvGetTickCount() - t;		//ç»Ÿè®¡ç›‘æµ‹æ—¶é—´
       //      printf( "detection time = %gms\n", t/((double)cvGetTickFrequency()*1000.) );
       for( i = 0; i < (faces ? faces->total : 0); i++ )
         {
-	  CvRect* r = (CvRect*)cvGetSeqElem( faces, i );		//½«facesÊı¾İ´ÓCvSeq×ªÎªCvRect ?
+	  CvRect* r = (CvRect*)cvGetSeqElem( faces, i );		//å°†facesæ•°æ®ä»CvSeqè½¬ä¸ºCvRect ?
 	  //just for human eyes
 	  CvPoint center;
 	  int radius;
@@ -131,13 +131,14 @@ void detect_and_draw( IplImage* img )
 	  radius = cvRound((r->width + r->height)*0.25);
 	  cvCircle( img, center, radius, colors[i%8], 3, 8, 0 );
 	  
+	  
 	  result[frameNum][i].x = r->x;
 	  result[frameNum][i].y = r->y;
 	  result[frameNum][i].width = r->width;
 	  result[frameNum][i].height = r->height;
 	  printf("%f, %f, %f, %f\t", result[frameNum][i].x, result[frameNum][i].y, result[frameNum][i].width, result[frameNum][i].height);
         }
-      //t = (double)cvGetTickCount() - t;		//Í³¼Æ¼à²â¼°»æÖÆÊ±¼ä
+      //t = (double)cvGetTickCount() - t;		//ç»Ÿè®¡ç›‘æµ‹åŠç»˜åˆ¶æ—¶é—´
       //      printf( "detection time = %gms\n", t/((double)cvGetTickFrequency()*1000.) );
       printf("\n");
     }
@@ -156,6 +157,7 @@ int is_speaking(int people ,FaceInfo *face)
 
 void beautify_result(FaceInfo result[50000][10])
 {
+  sort_horizontally(result[50000][10]);
   
 }
 
