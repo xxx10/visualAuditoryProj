@@ -1,7 +1,8 @@
 #include <stdio.h>
-#include <opencv/highgui.h>
-#include <opencv/cv.h>
 int main(int argc, char** argv)
 {
+  FILE *out;
+  out = fopen("test", "w");
+  fprintf(out, "hahahaha");
   return 0;
 }

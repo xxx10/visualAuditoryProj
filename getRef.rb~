@@ -1,0 +1,4 @@
+File.new("result.dat").each_line do |line|
+  ele = line.chomp.split
+  p ele
+end

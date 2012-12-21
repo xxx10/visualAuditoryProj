@@ -12,6 +12,7 @@
 #ifdef _EiC
 #define WIN32
 #endif
+#define CLEAR_FACEINFO(f) f.x=0;f.y=0;f.width=0;f.height=0;f.isSpeaking=0;
 using namespace std;
 static CvMemStorage* storage = 0;		
 static CvHaarClassifierCascade* cascade = 0;		//分类器
@@ -20,20 +21,22 @@ typedef struct __faceinfo {
   double y;
   double width;
   double height;
-  bool isSpeaking;
+  int isSpeaking;
 }FaceInfo;
-static FaceInfo result[50000][10];
+static FaceInfo result[10000][10];
+static int totalFrame = 1350;
 static int frameNum = 0;
 static FaceInfo refer[5];
 static int people = 2;
 
 int is_speaking(int people ,FaceInfo *face); 
 void detect_and_draw( IplImage* image ); 
-void beautify_result(FaceInfo result[50000][10]);
-void sort_horizontally(FaceInfo face[50000][10]);
-void swap_faceinfo(FaceInfo face1, FaceInfo face2);
+void beautify_result(FaceInfo result[10000][10]);
+void sort_horizontally(FaceInfo face[10000][10]);
+void swap_faceinfo(FaceInfo &face1, FaceInfo &face2);
 void init_params();
-bool considerable(FaceInfo face);
+bool considerable(FaceInfo &face);
+double distance(FaceInfo face1, FaceInfo face2);
 const char* cascade_name = "haarcascade_frontalface_alt.xml";		//分类器路径
 /*    "haarcascade_profileface.xml";*/
  
@@ -63,7 +66,7 @@ int main( int argc, char** argv )
  
   if( capture )    //对视频文件(摄像头)逐帧处理
     {
-      for(frameNum = 0;++frameNum;)
+      for(frameNum = 0;;frameNum++)
         {
 	  if( !cvQueryFrame( capture ))		
 	    break;
@@ -86,6 +89,7 @@ int main( int argc, char** argv )
       cvReleaseCapture( &capture );			//释放捕捉器，同时释放frame
     }
   cvDestroyWindow("result");		//销毁窗口
+  beautify_result(result);
   return 0;
 }
 
@@ -135,23 +139,13 @@ void detect_and_draw( IplImage* img )
 	  radius = cvRound((r->width + r->height)*0.25);
 	  cvCircle( img, center, radius, colors[i%8], 3, 8, 0 );
 	  
-	  FaceInfo tmp;
-	  tmp.x = r->x;
-	  tmp.y = r->y;
-	  tmp.width = r->width;
-	  tmp.height = r->height;
-	  if(considerable(tmp))
-	    cout<<"considerable"<<endl;
-	  else break;
 	  result[frameNum][i].x = r->x;
 	  result[frameNum][i].y = r->y;
 	  result[frameNum][i].width = r->width;
 	  result[frameNum][i].height = r->height;
 
-	  printf("%f, %f, %f, %f\t", result[frameNum][i].x, result[frameNum][i].y, result[frameNum][i].width, result[frameNum][i].height);
         }
-      //t = (double)cvGetTickCount() - t;		//统计监测及绘制时间
-      //      printf( "detection time = %gms\n", t/((double)cvGetTickFrequency()*1000.) );
+      printf("%d frame", frameNum);
       printf("\n");
     }
 
@@ -167,41 +161,90 @@ int is_speaking(int people ,FaceInfo *face)
   return 0;
 }
 
-void beautify_result(FaceInfo result[50000][10])
+void beautify_result(FaceInfo result[10000][10])
 {
+  double distance(FaceInfo face1, FaceInfo face2);
+  void getRef(FaceInfo result[10000][10]);
   sort_horizontally(result);
+  getRef(result);
+  for(int i = 0 ; i<frameNum ; i++)
+    for(int j = 0 ; j<10 ; j++)
+      {
+	if(!considerable(result[i][j]))
+	  {
+	    result[i][j].x = 2000;
+	    result[i][j].y = 2000;
+	  }
+      }
+  sort_horizontally(result);
+  for(int j = 0; j<people; j++)
+    for(int i = 1; i<frameNum - 1; i++)
+      {
+	if(distance(result[i-1][j], result[i+1][j]) < 10 && distance(result[i][j], result[i+1][j]) > 30 && result[i-1][j].x != 0)
+	  {
+	    result[i][j].x = result[i+1][j].x;
+	    result[i][j].y = result[i+1][j].y;
+	    result[i][j].width = result[i+1][j].width;
+	    result[i][j].height = result[i+1][j].width;
+	  }
+      }
+  FILE *valid;
+  int c;
+  valid = fopen("Valid.dat","r");
+  for(int i = 0; i < frameNum; i++)
+    {
+      fscanf(valid, "%d", &c);
+      if(c == 0)
+	{
+	  for(int j = 0; j<people; j++)
+	    {
+	      CLEAR_FACEINFO(result[i][j]);
+	    }
+	}
+    }
+  FILE *result_output;
+  result_output = fopen("result.dat", "w");
+  for(int i = 0; i < frameNum ; i++)
+    {
+      for(int j = 0 ; j < people ; j++)
+      {
+	fprintf(result_output, "%f\t%f\t%f\t%f\t%d\t", result[i][j].x, result[i][j].y, result[i][j].width, result[i][j].height, result[i][j].isSpeaking);
+      }
+      fprintf(result_output, "\n");
+    }
 }
 
-void sort_horizontally(FaceInfo result[50000][10])
+
+void sort_horizontally(FaceInfo result[10000][10])
 {
   for(int j = 0; j < frameNum; j++)
     for(int i = 0;i < 10; i++)
+      for(int p = 0; p < i; p++)
       {
-	if(result[j][i].x < result[j][i+1].x)
+	if(result[j][p].x > result[j][i].x && result[j][i].x != 0)
 	  {
-	    swap_faceinfo(result[j][i], result[j][i+1]);
+	    printf("before swapping:%f, %f\n",result[j][p].x, result[j][i].x);
+	    swap_faceinfo(result[j][p], result[j][i]);
+	    printf("after  swapping:%f, %f\n", result[j][p].x, result[j][i].x);
 	  }
       }
 }
 
-void swap_faceinfo(FaceInfo face1, FaceInfo face2)
+void swap_faceinfo(FaceInfo &face1, FaceInfo &face2)
 {
   FaceInfo tmp;
-  if(face1.x > face2.x)
-    {
-      tmp.x = face1.x;
-      tmp.y = face1.y;
-      tmp.width = face1.width;
-      tmp.height = face1.height;
-      face1.x = face2.x;
-      face1.y = face2.y;
-      face1.width = face2.width;
-      face1.height = face2.height;
-      face2.x = tmp.x;
-      face2.y = tmp.y;
-      face2.width = tmp.width;
-      face2.height = tmp.height;
-    }
+  tmp.x = face1.x;
+  tmp.y = face1.y;
+  tmp.width = face1.width;
+  tmp.height = face1.height;
+  face1.x = face2.x;
+  face1.y = face2.y;
+  face1.width = face2.width;
+  face1.height = face2.height;
+  face2.x = tmp.x;
+  face2.y = tmp.y;
+  face2.width = tmp.width;
+  face2.height = tmp.height;
 }
 
 void init_params()
@@ -212,12 +255,12 @@ void init_params()
   refer[1].y = 242.0;
 }
 
-bool considerable(FaceInfo face)
+bool considerable(FaceInfo &face)
 {
   double distance(FaceInfo face1, FaceInfo face2);
   for(int i = 0; i<people; i++)
     {
-      if(distance(refer[i], face) < 200)
+      if(distance(refer[i], face) < 160)
 	return true;
     }
   return false;
@@ -226,4 +269,27 @@ bool considerable(FaceInfo face)
 double distance(FaceInfo face1, FaceInfo face2)
 {
   return sqrt((face1.x - face2.x)*(face1.x - face2.x)+(face1.y - face2.y)*(face1.y - face2.y));
+}
+void getRef(FaceInfo result[10000][10])
+{
+  int count = 0;
+  int sum_x[5] = {0};
+  int sum_y[5] = {0};
+  for(int i = 0 ;i < frameNum ; i++)
+    {
+      for(int j = 0 ; j < people ; j++)
+	{
+	  if(result[i][j].x == 0)
+	    break;
+	  sum_x[j] = sum_x[j] + result[i][j].x;
+	  sum_y[j] = sum_y[j] + result[i][j].y;
+	  count++;
+	}
+    }
+  for(int i = 0; i< 5 ; i++)
+    {
+      refer[i].x = sum_x[i]/count*people;
+      refer[i].y = sum_y[i]/count*people;
+    }
+  printf("refer point: (%f, %f), (%f, %f)\n", refer[0].x, refer[0].y, refer[1].x, refer[1].y);
 }
