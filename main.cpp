@@ -1,5 +1,5 @@
-#include "opencv/cv.h"
-#include "opencv/highgui.h"
+#include "cv.h"
+#include "highgui.h"
 #include <iostream>
 #include <stdlib.h>
 #include <string.h>
@@ -13,6 +13,7 @@
 #define WIN32
 #endif
 #define CLEAR_FACEINFO(f) f.x=0;f.y=0;f.width=0;f.height=0;f.isSpeaking=0;
+#define FRAME_NUM_MAX 10000
 using namespace std;
 static CvMemStorage* storage = 0;		
 static CvHaarClassifierCascade* cascade = 0;		//分类器
@@ -23,26 +24,37 @@ typedef struct __faceinfo {
   double height;
   int isSpeaking;
 }FaceInfo;
-static FaceInfo result[10000][10];
-static int totalFrame = 1350;
+typedef struct _point3{
+	double x;
+	double y;
+	double z;
+}point3;
+static FaceInfo result[FRAME_NUM_MAX][10];
+static int totalFrame = 0;
+static int dataLength = 0;//视听数据长度，单位s
 static int frameNum = 0;
 static FaceInfo refer[5];
 static int people = 2;
-
+static point3 micLoc[4];
+static char validFile[128];
+static char videoFile[128];
+static char audioFile[4][128];
+static point3 speakerLoc[5]; //最多5人
 int is_speaking(int people ,FaceInfo *face); 
 void detect_and_draw( IplImage* image ); 
-void beautify_result(FaceInfo result[10000][10]);
-void sort_horizontally(FaceInfo face[10000][10]);
+void beautify_result(FaceInfo result[FRAME_NUM_MAX][10]);
+void sort_horizontally(FaceInfo face[FRAME_NUM_MAX][10]);
 void swap_faceinfo(FaceInfo &face1, FaceInfo &face2);
-void init_params();
+void init_params(char* filename);
 bool considerable(FaceInfo &face);
 double distance(FaceInfo face1, FaceInfo face2);
 const char* cascade_name = "haarcascade_frontalface_alt.xml";		//分类器路径
-/*    "haarcascade_profileface.xml";*/
- 
-int main( int argc, char** argv )
+//    "haarcascade_profileface.xml";
+
+
+int main(int argc, char** argv )
 {
-  init_params();
+  init_params(argv[1]);
   CvCapture* capture = 0;
   IplImage *frame, *frame_copy = 0;
   int optlen = strlen("--cascade="); //?  --cascade=为分类器选项指示符号 ?
@@ -58,9 +70,10 @@ int main( int argc, char** argv )
     }
   storage = cvCreateMemStorage(0);		// 创建内存存储器，内存块
  
-  if( !input_name || (isdigit(input_name[0]) && input_name[1] == '\0') )		//从摄像头读取
+//  下面这一步须注释掉xxx12.22
+//  if( !input_name || (isdigit(input_name[0]) && input_name[1] == '\0') )		//从摄像头读取
     //      capture = cvCaptureFromCAM( !input_name ? 0 : input_name[0] - '0' );	//初始化摄像头捕捉器
-    capture = cvCaptureFromAVI("Vid1.avi");
+    capture = cvCaptureFromAVI(videoFile);
 
   cvNamedWindow( "result", 1 );  //创建窗口
  
@@ -161,10 +174,10 @@ int is_speaking(int people ,FaceInfo *face)
   return 0;
 }
 
-void beautify_result(FaceInfo result[10000][10])
+void beautify_result(FaceInfo result[FRAME_NUM_MAX][10])
 {
   double distance(FaceInfo face1, FaceInfo face2);
-  void getRef(FaceInfo result[10000][10]);
+  void getRef(FaceInfo result[FRAME_NUM_MAX][10]);
   sort_horizontally(result);
   getRef(result);
   for(int i = 0 ; i<frameNum ; i++)
@@ -190,7 +203,7 @@ void beautify_result(FaceInfo result[10000][10])
       }
   FILE *valid;
   int c;
-  valid = fopen("Valid.dat","r");
+  valid = fopen(validFile,"r");
   for(int i = 0; i < frameNum; i++)
     {
       fscanf(valid, "%d", &c);
@@ -215,7 +228,7 @@ void beautify_result(FaceInfo result[10000][10])
 }
 
 
-void sort_horizontally(FaceInfo result[10000][10])
+void sort_horizontally(FaceInfo result[FRAME_NUM_MAX][10])
 {
   for(int j = 0; j < frameNum; j++)
     for(int i = 0;i < 10; i++)
@@ -247,12 +260,38 @@ void swap_faceinfo(FaceInfo &face1, FaceInfo &face2)
   face2.height = tmp.height;
 }
 
-void init_params()
+void init_params(char* filename)
 {
   refer[0].x = 197.0;
   refer[0].y = 173.0;
   refer[1].x = 982.0;
   refer[1].y = 242.0;
+  FILE* fileparam = fopen(filename, "r");
+  if (filename == NULL)
+  {
+	  printf("cannot open file : %s", filename);
+	  exit(0);
+  }
+  int num_video, num_audio;
+  int fps, fs;
+  point3 camLoc;
+  fscanf(fileparam, "%d%d%d", &num_video, &num_audio, &people);
+  fscanf(fileparam, "%d", &dataLength);
+  fscanf(fileparam, "%d%d", &fps, &fs);
+  totalFrame = fps * dataLength;
+  fscanf(fileparam, "%s", validFile);
+  fscanf(fileparam, "%s", videoFile);
+  fscanf(fileparam, "%lf%lf%lf", &camLoc.x, &camLoc.y, &camLoc.z);
+  for (int i = 0; i <= 3; i++)
+  {
+	  fscanf(fileparam, "%s", audioFile[i]);
+	  fscanf(fileparam, "%lf%lf%lf", &micLoc[i].x, &micLoc[i].y, &micLoc[i].z);
+  }
+  for (int i = 0; i <= people - 1; i++)
+  {
+	  fscanf(fileparam, "%lf%lf%lf", &speakerLoc[i].x, &speakerLoc[i].y, &speakerLoc[i].z);
+  }
+  fclose(fileparam);
 }
 
 bool considerable(FaceInfo &face)
@@ -270,11 +309,11 @@ double distance(FaceInfo face1, FaceInfo face2)
 {
   return sqrt((face1.x - face2.x)*(face1.x - face2.x)+(face1.y - face2.y)*(face1.y - face2.y));
 }
-void getRef(FaceInfo result[10000][10])
+void getRef(FaceInfo result[FRAME_NUM_MAX][10])
 {
   int count = 0;
-  int sum_x[5] = {0};
-  int sum_y[5] = {0};
+  double sum_x[5] = {0};
+  double sum_y[5] = {0};
   for(int i = 0 ;i < frameNum ; i++)
     {
       for(int j = 0 ; j < people ; j++)
