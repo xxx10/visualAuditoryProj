@@ -9,11 +9,15 @@
 #include <limits.h>
 #include <time.h>
 #include <ctype.h>
+#include <algorithm>
 #ifdef _EiC
 #define WIN32
 #endif
 #define CLEAR_FACEINFO(f) f.x=0;f.y=0;f.width=0;f.height=0;f.isSpeaking=0;
-#define FRAME_NUM_MAX 10000
+#define FRAME_NUM_MAX 30000
+#define V_SOUND 340
+void writeToFile();
+
 using namespace std;
 static CvMemStorage* storage = 0;		
 static CvHaarClassifierCascade* cascade = 0;		//分类器
@@ -29,23 +33,37 @@ typedef struct _point3{
 	double y;
 	double z;
 }point3;
+int pLeftThan(const void* p1, const void* p2)
+{
+	return  (*(point3*)p1).x - (*(point3*)p2).x;
+}
+double distanceP3(const point3 &p1, const point3 &p2)
+{
+	return sqrt((p1.x - p2.x) * (p1.x - p2.x) + \
+				(p1.y - p2.y) * (p1.y - p2.y) + \
+				(p1.z - p2.z) * (p1.z - p2.z) );
+}
 static FaceInfo result[FRAME_NUM_MAX][10];
 static int totalFrame = 0;
 static int dataLength = 0;//视听数据长度，单位s
 static int frameNum = 0;
 static FaceInfo refer[5];
 static int people = 2;
+static int fps = 0;//帧率
+static int fs = 0;//声音采样率
 static point3 micLoc[4];
 static char validFile[128];
 static char videoFile[128];
 static char audioFile[4][128];
 static point3 speakerLoc[5]; //最多5人
-int is_speaking(int people ,FaceInfo *face); 
+static int audioDataNum = 0;//每个文件中声音数据个数
+int is_speaking(int people ,FaceInfo result[FRAME_NUM_MAX][10]); 
 void detect_and_draw( IplImage* image ); 
 void beautify_result(FaceInfo result[FRAME_NUM_MAX][10]);
 void sort_horizontally(FaceInfo face[FRAME_NUM_MAX][10]);
 void swap_faceinfo(FaceInfo &face1, FaceInfo &face2);
 void init_params(char* filename);
+void writeToFile();
 bool considerable(FaceInfo &face);
 double distance(FaceInfo face1, FaceInfo face2);
 const char* cascade_name = "haarcascade_frontalface_alt.xml";		//分类器路径
@@ -94,7 +112,7 @@ int main(int argc, char** argv )
 	  else								//右上则反转拷贝
 	    cvFlip( frame, frame_copy, 0 );
 	  detect_and_draw( frame_copy );		// 调用检测和绘制函数
-	  is_speaking( people, result[frameNum] );
+//	  is_speaking( people, result[frameNum] );
 	  if( cvWaitKey( 10 ) >= 0 )          //等待键盘10ms
 	    break;
         }
@@ -103,6 +121,8 @@ int main(int argc, char** argv )
     }
   cvDestroyWindow("result");		//销毁窗口
   beautify_result(result);
+  is_speaking(people, result);
+  writeToFile();
   return 0;
 }
 
@@ -140,8 +160,11 @@ void detect_and_draw( IplImage* img )
 					  //(也可设为阈值0)操作方式，函数利用Canny边缘检测器来排除一些边缘很少或者很多的图像区域，因为这样的区域一般不含被检目标
 					  cvSize(80, 80) );
       // t = (double)cvGetTickCount() - t;		//统计监测时间
-      //      printf( "detection time = %gms\n", t/((double)cvGetTickFrequency()*1000.) );
-      for( i = 0; i < (faces ? faces->total : 0); i++ )
+      
+	  //      printf( "detection time = %gms\n", t/((double)cvGetTickFrequency()*1000.) );
+      int facesNum = (faces ? faces->total : 0);
+	  facesNum = (facesNum > 10) ? 10 : facesNum;
+	  for( i = 0; i < facesNum; i++ )
         {
 	  CvRect* r = (CvRect*)cvGetSeqElem( faces, i );		//将faces数据从CvSeq转为CvRect ?
 	  //just for human eyes
@@ -167,11 +190,140 @@ void detect_and_draw( IplImage* img )
   cvReleaseImage( &small_img );
 }
 
-int is_speaking(int people ,FaceInfo *face)
+int xcorr(int a[], int b[], int Length, int k)//求互相关函数
 {
-  face[0].isSpeaking = 1;
-  face[1].isSpeaking = 0;
-  return 0;
+	int val = 0;
+	if (k >= Length || k <= -Length)
+	{
+		val = -1;
+	}
+	else
+	{
+		for (int i = 0; i <= Length - 1 - abs(k); i ++)
+		{
+			if (k >= 0)
+			{
+				val = val + b[i] * a[i + k];
+			}
+			else
+			{
+				val = val + a[i] * b[i - k];
+			}
+		}
+	}
+	return val;
+}
+
+int is_speaking(int people ,FaceInfo result[FRAME_NUM_MAX][10])
+{
+
+	FILE* audio[4];
+	for (int i = 0; i <= 3; i++)
+	{
+		audio[i] = fopen(audioFile[i], "r");
+		if (audio[i] == NULL)
+		{
+			printf("cannot open file : %s", audioFile);
+			exit(0);
+		}
+	}
+	int data;
+	double powerAvg = 0;	//总平均功率
+	for (int i = 0; i <= audioDataNum - 1; i ++)
+	{
+		fscanf(audio[0], "%d", &data);
+		powerAvg = powerAvg + data * data;
+	}
+	powerAvg = powerAvg / audioDataNum;
+	rewind(audio[0]);
+	int jmax;
+	int cnt = 0;
+	double audioDataNumPerFrame = double(audioDataNum) / totalFrame;
+	int** audioData = new int*[4];
+	for (int i = 0; i <= 3; i ++)
+	{
+		audioData[i] = new int[int(audioDataNumPerFrame) + 1];
+	}
+	for (int i = 0; i <= totalFrame - 1; i ++)
+	{
+		jmax = int(audioDataNumPerFrame);
+		if (jmax + cnt < audioDataNumPerFrame * (i + 1) - 1) //解决可能出现的audioDataNumPerFrame非整数问题。
+		{
+			jmax = jmax + 1;
+		}
+		for (int k = 0; k <= 3; k ++)
+		{
+			for (int j = 0; j <= jmax - 1; j ++)
+			{
+				fscanf(audio[k], "%d", &audioData[k][j]);
+			}	
+			cnt++;
+		}
+		if (jmax == int(audioDataNumPerFrame))
+		{
+			for (int k = 0; k <= 3; k ++)
+			{
+				audioData[k][jmax] = 0;
+			}
+		}
+		double corrMax[3] = {0};
+		int argMaxCorr[3] = {0};
+		point3 t_delay;
+		double powerFrameAvg = 0;//该帧声音功率
+		for(int j = 0; j <= 2; j++)//对3个声音文件循环
+		{	
+			for (int k = - int(audioDataNumPerFrame) + 1; k <= int(audioDataNumPerFrame) - 1; k++)
+			{
+				double corr = (double)xcorr(audioData[0], audioData[j + 1], int(audioDataNumPerFrame) + 1, k);
+				if (corr > corrMax[j])
+				{
+					corrMax[j] = corr;
+					argMaxCorr[j] = k;
+				}
+			}
+			powerFrameAvg = powerFrameAvg + corrMax[j] / (jmax - argMaxCorr[j]); 
+		}
+		t_delay.x = - double(argMaxCorr[0]) / fs;
+		t_delay.y = - double(argMaxCorr[1]) / fs;
+		t_delay.z = - double(argMaxCorr[2]) / fs;
+		powerFrameAvg = powerFrameAvg / 3;
+		double thresholdPower = 0;//powerAvg / 10000;
+		double thresholdDelay = 3e-4;
+		point3 t_delay_idea;
+		if (powerFrameAvg >= thresholdPower)
+		{
+			bool finish = false;
+			for (int j = 0; j <= people - 1; j++)
+			{
+				t_delay_idea.x = (distanceP3(speakerLoc[j], micLoc[1]) - distanceP3(speakerLoc[j], micLoc[0])) / V_SOUND; 
+				t_delay_idea.y = (distanceP3(speakerLoc[j], micLoc[2]) - distanceP3(speakerLoc[j], micLoc[0])) / V_SOUND; 
+				t_delay_idea.z = (distanceP3(speakerLoc[j], micLoc[3]) - distanceP3(speakerLoc[j], micLoc[0])) / V_SOUND; 
+				if (distanceP3(t_delay, t_delay_idea) <= thresholdDelay && !finish)
+				{
+					result[i][j].isSpeaking = 1;
+					finish = true;
+				}
+				else
+				{
+					result[i][j].isSpeaking = 0;
+				}
+			}
+		}
+		else
+		{
+			for (int j = 0; j <= people - 1; j++)
+			{
+				result[i][j].isSpeaking = 0;
+			}
+		}
+	}
+	for (int i = 0; i <= 3; i++)
+	{
+		delete[] audioData[i];
+		fclose(audio[i]);
+	}
+	delete audioData;
+	return 0;
 }
 
 void beautify_result(FaceInfo result[FRAME_NUM_MAX][10])
@@ -214,16 +366,6 @@ void beautify_result(FaceInfo result[FRAME_NUM_MAX][10])
 	      CLEAR_FACEINFO(result[i][j]);
 	    }
 	}
-    }
-  FILE *result_output;
-  result_output = fopen("result.dat", "w");
-  for(int i = 0; i < frameNum ; i++)
-    {
-      for(int j = 0 ; j < people ; j++)
-      {
-	fprintf(result_output, "%f\t%f\t%f\t%f\t%d\t", result[i][j].x, result[i][j].y, result[i][j].width, result[i][j].height, result[i][j].isSpeaking);
-      }
-      fprintf(result_output, "\n");
     }
 }
 
@@ -273,12 +415,12 @@ void init_params(char* filename)
 	  exit(0);
   }
   int num_video, num_audio;
-  int fps, fs;
   point3 camLoc;
   fscanf(fileparam, "%d%d%d", &num_video, &num_audio, &people);
   fscanf(fileparam, "%d", &dataLength);
   fscanf(fileparam, "%d%d", &fps, &fs);
   totalFrame = fps * dataLength;
+  audioDataNum = fs * dataLength;
   fscanf(fileparam, "%s", validFile);
   fscanf(fileparam, "%s", videoFile);
   fscanf(fileparam, "%lf%lf%lf", &camLoc.x, &camLoc.y, &camLoc.z);
@@ -291,6 +433,7 @@ void init_params(char* filename)
   {
 	  fscanf(fileparam, "%lf%lf%lf", &speakerLoc[i].x, &speakerLoc[i].y, &speakerLoc[i].z);
   }
+  qsort(speakerLoc, people, sizeof(speakerLoc[0]), pLeftThan);//完成排序
   fclose(fileparam);
 }
 
@@ -331,4 +474,18 @@ void getRef(FaceInfo result[FRAME_NUM_MAX][10])
       refer[i].y = sum_y[i]/count*people;
     }
   printf("refer point: (%f, %f), (%f, %f)\n", refer[0].x, refer[0].y, refer[1].x, refer[1].y);
+}
+
+void writeToFile()
+{
+	FILE *result_output;
+	result_output = fopen("result.dat", "w");
+	for(int i = 0; i < frameNum ; i++)
+	{
+		for(int j = 0 ; j < people ; j++)
+		{
+			fprintf(result_output, "%f\t%f\t%f\t%f\t%d\t", result[i][j].x, result[i][j].y, result[i][j].width, result[i][j].height, result[i][j].isSpeaking);
+		}
+		fprintf(result_output, "\n");
+	}
 }
