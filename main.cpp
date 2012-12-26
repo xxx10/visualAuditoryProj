@@ -93,7 +93,7 @@ int main(int argc, char** argv )
     //      capture = cvCaptureFromCAM( !input_name ? 0 : input_name[0] - '0' );	//初始化摄像头捕捉器
     capture = cvCaptureFromAVI(videoFile);
 
-  cvNamedWindow( "result", 1 );  //创建窗口
+  //cvNamedWindow( "result", 1 );  //创建窗口
  
   if( capture )    //对视频文件(摄像头)逐帧处理
     {
@@ -119,7 +119,7 @@ int main(int argc, char** argv )
       cvReleaseImage( &frame_copy );			//释放帧副本内存空间
       cvReleaseCapture( &capture );			//释放捕捉器，同时释放frame
     }
-  cvDestroyWindow("result");		//销毁窗口
+  //cvDestroyWindow("result");		//销毁窗口
   beautify_result(result);
   is_speaking(people, result);
   writeToFile();
@@ -173,7 +173,7 @@ void detect_and_draw( IplImage* img )
 	  center.x = cvRound(r->x + r->width*0.5);
 	  center.y = cvRound(r->y + r->height*0.5);
 	  radius = cvRound((r->width + r->height)*0.25);
-	  cvCircle( img, center, radius, colors[i%8], 3, 8, 0 );
+	  //cvCircle( img, center, radius, colors[i%8], 3, 8, 0 );
 	  
 	  result[frameNum][i].x = r->x;
 	  result[frameNum][i].y = r->y;
@@ -185,14 +185,14 @@ void detect_and_draw( IplImage* img )
       printf("\n");
     }
 
-  cvShowImage( "result", img );
+  //cvShowImage( "result", img );
   cvReleaseImage( &gray );
   cvReleaseImage( &small_img );
 }
 
-int xcorr(int a[], int b[], int Length, int k)//求互相关函数
+double xcorr(int a[], int b[], int Length, int k)//求互相关函数
 {
-	int val = 0;
+	double val = 0;
 	if (k >= Length || k <= -Length)
 	{
 		val = -1;
@@ -274,7 +274,7 @@ int is_speaking(int people ,FaceInfo result[FRAME_NUM_MAX][10])
 		{	
 			for (int k = - int(audioDataNumPerFrame) + 1; k <= int(audioDataNumPerFrame) - 1; k++)
 			{
-				double corr = (double)xcorr(audioData[0], audioData[j + 1], int(audioDataNumPerFrame) + 1, k);
+				double corr = xcorr(audioData[0], audioData[j + 1], int(audioDataNumPerFrame) + 1, k);
 				if (corr > corrMax[j])
 				{
 					corrMax[j] = corr;
@@ -323,6 +323,20 @@ int is_speaking(int people ,FaceInfo result[FRAME_NUM_MAX][10])
 		fclose(audio[i]);
 	}
 	delete audioData;
+	for (int i = 0; i <= totalFrame - 3; i ++)//检测010和101型突发错误
+	{
+		for (int j = 0; j <= people - 1; j ++)
+		{
+			if (result[i][j].isSpeaking == 1 && result[i + 1][j].isSpeaking == 0 && result[i + 2][j].isSpeaking == 1)
+			{
+				result[i + 1][j].isSpeaking = 1;
+			}
+			else if (result[i][j].isSpeaking == 0 && result[i + 1][j].isSpeaking == 1 && result[i + 2][j].isSpeaking == 0)
+			{
+				result[i + 1][j].isSpeaking = 0;
+			}
+		}
+	}
 	return 0;
 }
 
@@ -378,9 +392,9 @@ void sort_horizontally(FaceInfo result[FRAME_NUM_MAX][10])
       {
 	if(result[j][p].x > result[j][i].x && result[j][i].x != 0)
 	  {
-	    printf("before swapping:%f, %f\n",result[j][p].x, result[j][i].x);
+	    //printf("before swapping:%f, %f\n",result[j][p].x, result[j][i].x);
 	    swap_faceinfo(result[j][p], result[j][i]);
-	    printf("after  swapping:%f, %f\n", result[j][p].x, result[j][i].x);
+	    //printf("after  swapping:%f, %f\n", result[j][p].x, result[j][i].x);
 	  }
       }
 }
@@ -480,7 +494,7 @@ void writeToFile()
 {
 	FILE *result_output;
 	result_output = fopen("result.dat", "w");
-	for(int i = 0; i < frameNum ; i++)
+	for(int i = 0; i < totalFrame ; i++)
 	{
 		for(int j = 0 ; j < people ; j++)
 		{
